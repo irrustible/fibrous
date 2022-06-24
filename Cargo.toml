@@ -1,0 +1,33 @@
+[package]
+name = "fibrous"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+nightly = ["stackle/nightly"]
+
+[dependencies]
+futures-micro = "0.5.0"
+ointers = "3.0.1"
+
+[dependencies.stackle]
+# path = "../stackle"
+git = "https://github.com/irrustible/stackle/"
+branch = "main"
+
+[dev-dependencies]
+wookie = "0.3.2"
+
+[dev-dependencies.criterion]
+version = "0.3.5"
+default-features = false
+
+[[bench]]
+name = "bench"
+harness = false
+
+[profile.dev]
+panic = "unwind"
+
