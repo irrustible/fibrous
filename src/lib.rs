@@ -22,7 +22,8 @@ pub struct Fiber<'a, R, S> {
   /// This is just here to get dropped when we're done.
   _stack:    S,
   /// Be invariant on R.
-  _phantom:  PhantomData<&'a fn() -> R>,
+  #[allow(clippy::type_complexity)]
+  _phantom:  PhantomData<(&'a (), fn() -> R)>,
 }
 
 // It is safe to send us across threads as long as we don't borrow anything that could go away.
