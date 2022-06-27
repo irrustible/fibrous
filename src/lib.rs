@@ -1,5 +1,6 @@
 use std::{
   cell::Cell,
+  fmt,
   future::Future,
   marker::PhantomData,
   mem::ManuallyDrop,
@@ -11,7 +12,7 @@ use std::{
 use ointers::Ointer;
 use futures_micro::pin;
 use stackle::switch::*;
-pub use stackle::stack;
+pub use stackle::stack::{self, Stack};
 
 /// A [`Future`] which executes a closure on its own stack like a stackful coroutine.
 ///
@@ -19,11 +20,17 @@ pub use stackle::stack;
 pub struct Fiber<'a, R, S> {
   /// This is the stack pointer to resume. We steal the sign bit to indicate whether it is done.
   stack_ptr: Ointer<usize,0,true,0>,
-  /// This is just here to get dropped when we're done.
-  _stack:    S,
+  /// This is mostly here to get dropped when we're done. It's used for Debug output.
+  stack:    S,
   /// Be invariant on R.
   #[allow(clippy::type_complexity)]
   _phantom:  PhantomData<(&'a (), fn() -> R)>,
+}
+
+impl<'a, R, S: Stack> fmt::Debug for Fiber<'a, R, S> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "Fiber<sp={:x},end={:x}>", self.stack_ptr.as_ptr() as usize, self.stack.end() as usize)
+  }
 }
 
 // It is safe to send us across threads as long as we don't borrow anything that could go away.
@@ -78,7 +85,7 @@ where S: stack::Stack + 'a {
       });
       Ointer::new(stack).steal(0)
     };
-    Fiber { stack_ptr, _stack: stack, _phantom: PhantomData }
+    Fiber { stack_ptr, stack, _phantom: PhantomData }
   }
 }
 
