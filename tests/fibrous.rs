@@ -3,13 +3,6 @@ use wookie::*;
 use std::task::Poll;
 use core::future::{pending, ready};
 
-struct Reusable<'a>(&'a AllocatorStackConst<8192>);
-
-unsafe impl<'a> Stack for Reusable<'a> {
-  #[inline(always)]
-  fn end(&self) -> *mut usize { self.0.end() }
-}
-
 fn never(a: &Awaiter) {
   loop { a.wait(pending::<()>()); }
 }
@@ -17,24 +10,23 @@ fn never(a: &Awaiter) {
 fn requires_send<S: Send>(_wat: &S) {}
 fn requires_sync<S: Sync>(_wat: &S) {}
 
-#[test]
+#[allow(dead_code)]
 fn static_is_send() {
-  let s = unsafe { AllocatorStackConst::<8192>::new() };
-  let s = unsafe { &*(&s as *const _) };
-  let s = Fiber::new(|_| 42usize, Reusable(s));
+  let s = unsafe { AllocatorStack::new(8192) };
+  let s = Fiber::new(|_| 42usize, s);
   requires_send(&s);
 }
 
-#[test]
+#[allow(dead_code)]
 fn is_sync() {
-  let s = unsafe { AllocatorStackConst::<8192>::new() };
+  let s = unsafe { AllocatorStack::new(8192) };
   let s = Fiber::new(|_| 42usize, s);
   requires_sync(&s);
 }
 
 #[test]
 fn poll_ret() {
-  let s = unsafe { AllocatorStackConst::<8192>::new() };
+  let s = unsafe { AllocatorStack::new(8192) };
   wookie!(s: Fiber::new(|_| 42usize, s));
   match s.poll() {
     Poll::Ready(Ok(42)) => (),
@@ -45,8 +37,8 @@ fn poll_ret() {
 
 #[test]
 fn poll_panic() {
-  let s = unsafe { AllocatorStackConst::<8192>::new() };
-  wookie!(s: Fiber::new(|_| panic!("no"), Reusable(&s)));
+  let s = unsafe { AllocatorStack::new(8192) };
+  wookie!(s: Fiber::new(|_| panic!("no"), s));
   match s.poll() {
     Poll::Ready(Err(_)) => (),
     _ => unreachable!()
@@ -56,8 +48,8 @@ fn poll_panic() {
 
 #[test]
 fn poll_never() {
-  let s = unsafe { AllocatorStackConst::<8192>::new() };
-  wookie!(s: Fiber::new(never, Reusable(&s)));
+  let s = unsafe { AllocatorStack::new(8192) };
+  wookie!(s: Fiber::new(never, s));
   for _ in 0..5 {
     match s.poll() {
       Poll::Pending => (),
@@ -69,8 +61,8 @@ fn poll_never() {
 
 #[test]
 fn poll_always() {
-  let s = unsafe { AllocatorStackConst::<8192>::new() };
-  wookie!(s: Fiber::new(|b| b.wait(ready(42usize)), Reusable(&s)));
+  let s = unsafe { AllocatorStack::new(8192) };
+  wookie!(s: Fiber::new(|b| b.wait(ready(42usize)), s));
   match s.poll() {
     Poll::Ready(Ok(42usize)) => (),
     _ => unreachable!()
@@ -80,6 +72,6 @@ fn poll_always() {
 
 #[test]
 fn drop_unused() {
-  let s = unsafe { AllocatorStackConst::<8192>::new() };
+  let s = unsafe { AllocatorStack::new(8192) };
   Fiber::new(|_| (), s);
 }

@@ -36,7 +36,8 @@ impl<'a, R, S> Drop for Fiber<'a, R, S> {
     // If the fiber is not marked done, we must unwind the stack
     // We pessimise against this because futures are typically run to completion.
     if unlikely(self.stack_ptr.stolen() == 0) {
-      unsafe { switch(self.stack_ptr.as_ptr(), 0) };
+      let stack_ptr = self.stack_ptr.as_ptr();
+      unsafe { switch(stack_ptr, 0) };
     }
   }
 }
@@ -47,36 +48,35 @@ where S: stack::Stack + 'a {
   pub fn new<F>(fun: F, stack: S) -> Self
   where F: 'a + FnOnce(&Awaiter) -> R {
     let stack_ptr = unsafe {
-      Ointer::new(
-        link_closure_detached(stack.end(), move |paused, waker| {
-          // If waker is 0, it's not a waker, it's a request to unwind.
-          if unlikely(waker == 0) {
-            // As we're at the top of the stack, the only thing an unwind here would do is drop
-            // `fun`'. Returning would also work, but this function may not return.
-            drop(fun);
-            switch(paused, 0); // the standard response to a panic request.
-            unreachable!()             // we aren't here. needed to prevent a compile error.
-          }
-          // Now we'll create a awaiter with those values and start off the closure.
-          let awaiter = Awaiter {
-            stack: Cell::new(paused),
-            waker: Cell::new(waker as *const _),
-          };
-          // This delicate mess moves the provided closure into the new closure we're creating. If we
-          // don't do this, we'll be rewarded with a segfault at best.
-          let ret = {
-            let awaiter = &awaiter;             // Permit us to write `move` on the next line.
-            let fun = move || fun(awaiter);     // Move the passed closure into the wrapper closure.
-            catch_unwind(AssertUnwindSafe(fun)) // Run the closure, catching any unwind panic.
-          };
-          // 'move' the value back by not dropping it and returning a pointer to it to take.
-          let ret = ManuallyDrop::new(ret);
-          let ret = &ret as *const ManuallyDrop<Result<R>> as usize;
-          // finish by suspending once more, with that pointer.
-          switch(awaiter.stack.get(), ret);
-          unreachable!()
-        })
-      ).steal(0)
+      let stack = link_closure_detached(stack.end(), move |paused, waker| {
+        // If waker is 0, it's not a waker, it's a request to unwind.
+        if unlikely(waker == 0) {
+          // As we're at the top of the stack, the only thing an unwind here would do is drop
+          // `fun`'. Returning would also work, but this function may not return.
+          drop(fun);
+          switch(paused, 0); // the standard response to a panic request.
+          unreachable!()     // we aren't here. needed to prevent a compile error.
+        }
+        // Now we'll create a awaiter with those values and start off the closure.
+        let awaiter = Awaiter {
+          stack: Cell::new(paused),
+          waker: Cell::new(waker as *const _),
+        };
+        // This delicate mess moves the provided closure into the new closure we're creating. If we
+        // don't do this, we'll be rewarded with a segfault at best.
+        let ret = {
+          let awaiter = &awaiter;             // Permit us to write `move` on the next line.
+          let fun = move || fun(awaiter);     // Move the passed closure into the wrapper closure.
+          catch_unwind(AssertUnwindSafe(fun)) // Run the closure, catching any unwind panic.
+        };
+        // 'move' the value back by not dropping it and returning a pointer to it to take.
+        let ret = ManuallyDrop::new(ret);
+        let ret = &ret as *const ManuallyDrop<Result<R>> as usize;
+        // finish by suspending once more, with that pointer.
+        switch(awaiter.stack.get(), ret);
+        unreachable!()
+      });
+      Ointer::new(stack).steal(0)
     };
     Fiber { stack_ptr, _stack: stack, _phantom: PhantomData }
   }
